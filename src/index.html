@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Liella!予定登録">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Liella! キャスト出演予定登録</title>
+  <style>
+    :root {
+      color-scheme: light;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      padding: 16px 16px 48px;
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", sans-serif;
+      background: #f5f5f7;
+      color: #1c1c1e;
+    }
+    h1 {
+      font-size: 18px;
+      margin: 4px 0 20px;
+    }
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    label.field-label {
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .required::after {
+      content: "必須";
+      font-size: 11px;
+      font-weight: normal;
+      color: #ff3b30;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    input[type="text"],
+    input[type="date"],
+    input[type="time"],
+    input[type="url"],
+    textarea,
+    select {
+      width: 100%;
+      padding: 12px 14px;
+      font-size: 16px;
+      border: 1px solid #d1d1d6;
+      border-radius: 10px;
+      background: #fff;
+    }
+    textarea {
+      resize: vertical;
+      min-height: 70px;
+    }
+    .cast-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+    }
+    .cast-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      border: 1px solid #d1d1d6;
+      border-radius: 10px;
+      background: #fff;
+    }
+    .cast-option input {
+      width: 20px;
+      height: 20px;
+    }
+    .radio-row {
+      display: flex;
+      gap: 12px;
+    }
+    .radio-option {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px;
+      border: 1px solid #d1d1d6;
+      border-radius: 10px;
+      background: #fff;
+    }
+    .radio-option input {
+      width: 20px;
+      height: 20px;
+    }
+    .time-row {
+      display: flex;
+      gap: 10px;
+    }
+    .time-row .field {
+      flex: 1;
+    }
+    .error-text {
+      color: #ff3b30;
+      font-size: 13px;
+      min-height: 16px;
+    }
+    button#submitButton {
+      padding: 16px;
+      font-size: 17px;
+      font-weight: 600;
+      color: #fff;
+      background: #ff5a8a;
+      border: none;
+      border-radius: 12px;
+      -webkit-appearance: none;
+    }
+    button#submitButton:disabled {
+      background: #c7c7cc;
+    }
+    button#duplicateButton {
+      display: none;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      color: #ff5a8a;
+      background: #fff;
+      border: 1px solid #ff5a8a;
+      border-radius: 12px;
+      -webkit-appearance: none;
+    }
+    #statusMessage {
+      text-align: center;
+      font-size: 14px;
+      min-height: 20px;
+    }
+    #statusMessage.success {
+      color: #34c759;
+    }
+    #statusMessage.error {
+      color: #ff3b30;
+    }
+  </style>
+</head>
+<body>
+  <h1>Liella! キャスト出演予定登録</h1>
+
+  <form id="eventForm">
+    <div class="field">
+      <span class="field-label required">出演者</span>
+      <div class="cast-grid" id="castGrid">
+        <? castList.forEach(function(cast) { ?>
+          <label class="cast-option">
+            <input type="checkbox" name="casts" value="<?= cast ?>">
+            <span><?= cast ?></span>
+          </label>
+        <? }); ?>
+      </div>
+      <div class="error-text" data-error-for="casts"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label required" for="title">タイトル</label>
+      <input type="text" id="title" name="title" placeholder="例: Liella!ライブ">
+      <div class="error-text" data-error-for="title"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label required" for="category">カテゴリ</label>
+      <select id="category" name="category">
+        <option value="">選択してください</option>
+        <? categoryList.forEach(function(category) { ?>
+          <option value="<?= category ?>"><?= category ?></option>
+        <? }); ?>
+      </select>
+      <div class="error-text" data-error-for="category"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="venue">会場</label>
+      <input type="text" id="venue" name="venue" placeholder="例: 横浜アリーナ">
+    </div>
+
+    <div class="field">
+      <label class="field-label required" for="date">日付</label>
+      <input type="date" id="date" name="date">
+      <div class="error-text" data-error-for="date"></div>
+    </div>
+
+    <div class="field">
+      <span class="field-label required">イベント種別</span>
+      <div class="radio-row">
+        <label class="radio-option">
+          <input type="radio" name="eventType" value="timed" checked>
+          <span>時間指定</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="eventType" value="allday">
+          <span>終日</span>
+        </label>
+      </div>
+      <div class="error-text" data-error-for="eventType"></div>
+    </div>
+
+    <div class="time-row" id="timeFields">
+      <div class="field">
+        <label class="field-label required" for="startTime">開始時刻</label>
+        <input type="time" id="startTime" name="startTime">
+        <div class="error-text" data-error-for="startTime"></div>
+      </div>
+      <div class="field">
+        <label class="field-label" for="endTime">終了時刻（任意）</label>
+        <input type="time" id="endTime" name="endTime">
+        <div class="error-text" data-error-for="endTime"></div>
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="recurrence">繰り返し</label>
+      <select id="recurrence" name="recurrence">
+        <? recurrenceOptions.forEach(function(option) { ?>
+          <option value="<?= option.value ?>"><?= option.label ?></option>
+        <? }); ?>
+      </select>
+      <div class="error-text" data-error-for="recurrence"></div>
+    </div>
+
+    <div class="field" id="occurrenceCountField" style="display: none;">
+      <label class="field-label required" for="occurrenceCount">繰り返し回数</label>
+      <input type="number" id="occurrenceCount" name="occurrenceCount" min="1" inputmode="numeric" placeholder="例: 12">
+      <div class="error-text" data-error-for="occurrenceCount"></div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="url">情報元URL</label>
+      <input type="url" id="url" name="url" placeholder="https://...">
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="memo">メモ</label>
+      <textarea id="memo" name="memo"></textarea>
+    </div>
+
+    <div class="error-text" data-error-for="general"></div>
+
+    <button type="submit" id="submitButton">カレンダーに登録</button>
+    <button type="button" id="duplicateButton">同じ内容でもう1件登録（時間だけ変更）</button>
+    <div id="statusMessage"></div>
+  </form>
+
+  <script>
+    var form = document.getElementById('eventForm');
+    var submitButton = document.getElementById('submitButton');
+    var duplicateButton = document.getElementById('duplicateButton');
+    var statusMessage = document.getElementById('statusMessage');
+    var timeFields = document.getElementById('timeFields');
+    var occurrenceCountField = document.getElementById('occurrenceCountField');
+    var lastSubmittedFormData = null;
+
+    function updateTimeFieldsVisibility() {
+      var isTimed = form.querySelector('input[name="eventType"]:checked').value === 'timed';
+      timeFields.style.display = isTimed ? 'flex' : 'none';
+    }
+
+    function updateOccurrenceCountVisibility() {
+      var hasRecurrence = form.recurrence.value !== 'none';
+      occurrenceCountField.style.display = hasRecurrence ? 'flex' : 'none';
+    }
+
+    form.querySelectorAll('input[name="eventType"]').forEach(function (radio) {
+      radio.addEventListener('change', updateTimeFieldsVisibility);
+    });
+    form.recurrence.addEventListener('change', updateOccurrenceCountVisibility);
+    updateTimeFieldsVisibility();
+    updateOccurrenceCountVisibility();
+
+    function clearErrors() {
+      form.querySelectorAll('.error-text').forEach(function (el) {
+        el.textContent = '';
+      });
+      statusMessage.textContent = '';
+      statusMessage.className = '';
+    }
+
+    function showErrors(errors) {
+      Object.keys(errors).forEach(function (field) {
+        var el = form.querySelector('[data-error-for="' + field + '"]');
+        if (el) {
+          el.textContent = errors[field];
+        }
+      });
+    }
+
+    function collectFormData() {
+      var casts = Array.prototype.slice
+        .call(form.querySelectorAll('input[name="casts"]:checked'))
+        .map(function (el) { return el.value; });
+
+      return {
+        casts: casts,
+        title: form.title.value,
+        category: form.category.value,
+        venue: form.venue.value,
+        date: form.date.value,
+        eventType: form.querySelector('input[name="eventType"]:checked').value,
+        startTime: form.startTime.value,
+        endTime: form.endTime.value,
+        recurrence: form.recurrence.value,
+        occurrenceCount: form.occurrenceCount.value,
+        url: form.url.value,
+        memo: form.memo.value
+      };
+    }
+
+    // 登録成功後は日付だけ残し、他の項目は初期状態に戻す。
+    // 情報源を1件ずつ確認していくと同じ日に複数の予定が見つかることが多く、
+    // 日付だけ保持するのが最も入力の手間を減らせるため。
+    function resetFormKeepingDate() {
+      var date = form.date.value;
+      form.reset();
+      form.date.value = date;
+      updateTimeFieldsVisibility();
+      updateOccurrenceCountVisibility();
+    }
+
+    // 直前に登録した内容を時刻だけ空にして復元する。
+    // ファンミーティングの昼の部/夜の部のように、同じ出演者・タイトルで
+    // 時間帯だけ違う予定を続けて登録したいケース向け。
+    function applyLastSubmittedFormData() {
+      if (!lastSubmittedFormData) {
+        return;
+      }
+      var data = lastSubmittedFormData;
+
+      form.querySelectorAll('input[name="casts"]').forEach(function (checkbox) {
+        checkbox.checked = data.casts.indexOf(checkbox.value) !== -1;
+      });
+      form.title.value = data.title;
+      form.category.value = data.category;
+      form.venue.value = data.venue;
+      form.date.value = data.date;
+      form.querySelectorAll('input[name="eventType"]').forEach(function (radio) {
+        radio.checked = radio.value === data.eventType;
+      });
+      form.startTime.value = '';
+      form.endTime.value = '';
+      form.recurrence.value = data.recurrence;
+      form.occurrenceCount.value = data.occurrenceCount;
+      form.url.value = data.url;
+      form.memo.value = data.memo;
+
+      updateTimeFieldsVisibility();
+      updateOccurrenceCountVisibility();
+      clearErrors();
+      form.startTime.focus();
+    }
+
+    duplicateButton.addEventListener('click', applyLastSubmittedFormData);
+
+    form.addEventListener('submit', function (event) {
+      event.preventDefault();
+      clearErrors();
+      submitButton.disabled = true;
+      submitButton.textContent = '登録中…';
+
+      var formData = collectFormData();
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          submitButton.disabled = false;
+          submitButton.textContent = 'カレンダーに登録';
+
+          if (result.success) {
+            statusMessage.textContent = 'Googleカレンダーに登録しました';
+            statusMessage.className = 'success';
+            lastSubmittedFormData = formData;
+            duplicateButton.style.display = 'block';
+            resetFormKeepingDate();
+          } else {
+            showErrors(result.errors || {});
+            statusMessage.textContent = '入力内容を確認してください';
+            statusMessage.className = 'error';
+          }
+        })
+        .withFailureHandler(function (error) {
+          submitButton.disabled = false;
+          submitButton.textContent = 'カレンダーに登録';
+          statusMessage.textContent = 'エラーが発生しました: ' + error.message;
+          statusMessage.className = 'error';
+        })
+        .submitEvent(formData);
+    });
+  </script>
+</body>
+</html>
