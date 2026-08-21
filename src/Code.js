@@ -1,37 +1,128 @@
 /**
  * Webアプリのエントリポイント。
- * doGet: フォーム画面の表示
- * submitEvent: クライアントから呼ばれる唯一の登録処理入口
+ * doGet: 画面表示（登録フォーム + Liella!専用カレンダー）
+ * それ以外は google.script.run から呼ばれるサーバー関数の入口。
+ * クライアントは常にここを経由し、Calendar APIやCalendarServiceを直接呼ばない
+ * （＝ブラウザにGoogleのOAuthトークンが渡ることはない。GASのWebアプリ基盤が
+ * 認証・トークン管理を行い、このスクリプトはトークンそのものを一切扱わない）。
  */
 
 function doGet() {
   var template = HtmlService.createTemplateFromFile('index');
   template.castList = Config.CAST_LIST;
   template.categoryList = Config.CATEGORY_LIST;
+  template.groupList = Config.GROUP_LIST;
   template.recurrenceOptions = Config.RECURRENCE_OPTIONS;
   return template
     .evaluate()
-    .setTitle('Liella! キャスト出演予定登録')
+    .setTitle('Liella! キャスト出演予定管理')
     .setFaviconUrl('https://www.google.com/favicon.ico')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, maximum-scale=1');
 }
 
 /**
- * クライアントの google.script.run から呼ばれる。
- * 検証 → 変換 → Calendar登録 の順に処理し、結果をクライアントへ返す。
- * クライアント側の入力値は信用せず、必ずここでサーバー側検証を通す。
+ * デプロイ設定（access: MYSELF）に加えた二重チェック。
+ * Config.ALLOWED_EMAIL が設定されている場合のみ有効。
+ * メールアドレスはクライアントから受け取らず、必ずGASの実行コンテキストから取得する
+ * （フロント側の申告を認可根拠にしないため）。
+ */
+function assertAuthorized_() {
+  if (!Config.ALLOWED_EMAIL) {
+    return;
+  }
+  var email = Session.getActiveUser().getEmail();
+  if (email !== Config.ALLOWED_EMAIL) {
+    throw new Error('このアプリを利用する権限がありません');
+  }
+}
+
+function buildGeneralErrorResult_(e) {
+  // Calendar APIのエラーメッセージはHTTPステータス説明程度で、
+  // トークンやシークレットを含まない（このアプリはそれらを扱っていないため）。
+  return { success: false, errors: { general: '処理に失敗しました: ' + e.message } };
+}
+
+/**
+ * 新規イベント登録。クライアントから呼ばれる唯一の作成用エントリ。
  */
 function submitEvent(formData) {
+  assertAuthorized_();
+
   var validation = validateFormData(formData);
   if (!validation.valid) {
     return { success: false, errors: validation.errors };
   }
 
   try {
-    var eventData = buildEventData(formData);
-    createEvent(eventData);
+    var normalized = normalizeFormData_(formData);
+    var resource = buildEventResource(normalized);
+    var created = insertCalendarEvent_(resource);
+    return { success: true, event: toAppEvent(created) };
+  } catch (e) {
+    return buildGeneralErrorResult_(e);
+  }
+}
+
+/**
+ * 指定期間（ISO日時文字列）のイベント一覧を取得する。
+ * カレンダー画面の月表示・一覧表示は、表示中の期間分だけをこの関数経由で取得する
+ * （不要な全期間取得を避けるため）。
+ */
+function fetchEvents(rangeStartIso, rangeEndIso) {
+  assertAuthorized_();
+
+  if (!validateDateRange_(rangeStartIso, rangeEndIso)) {
+    return { success: false, errors: { general: '取得期間の指定が不正です' } };
+  }
+
+  try {
+    var events = listCalendarEvents_(rangeStartIso, rangeEndIso);
+    return { success: true, events: events.map(toAppEvent) };
+  } catch (e) {
+    return buildGeneralErrorResult_(e);
+  }
+}
+
+/**
+ * 既存イベントの更新。
+ */
+function updateEvent(eventId, formData) {
+  assertAuthorized_();
+
+  if (!isValidEventId_(eventId)) {
+    return { success: false, errors: { general: 'イベントの指定が不正です' } };
+  }
+
+  var validation = validateFormData(formData);
+  if (!validation.valid) {
+    return { success: false, errors: validation.errors };
+  }
+
+  try {
+    var normalized = normalizeFormData_(formData);
+    var resource = buildEventResource(normalized);
+    var updated = patchCalendarEvent_(eventId, resource);
+    return { success: true, event: toAppEvent(updated) };
+  } catch (e) {
+    return buildGeneralErrorResult_(e);
+  }
+}
+
+/**
+ * イベントの削除。確認ダイアログはクライアント側で必ず表示させ、
+ * ここでは渡されたeventIdの形式検証のみ行う。
+ */
+function deleteEvent(eventId) {
+  assertAuthorized_();
+
+  if (!isValidEventId_(eventId)) {
+    return { success: false, errors: { general: 'イベントの指定が不正です' } };
+  }
+
+  try {
+    removeCalendarEvent_(eventId);
     return { success: true };
   } catch (e) {
-    return { success: false, errors: { general: 'カレンダーへの登録に失敗しました: ' + e.message } };
+    return buildGeneralErrorResult_(e);
   }
 }

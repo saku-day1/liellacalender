@@ -1,77 +1,88 @@
 /**
- * Google Calendarへの新規イベント登録を専任で担う。
- * Calendar IDの解決（設定値 or デフォルトカレンダー）もここに閉じ込める。
+ * Google Calendar（Advanced Calendar Service = Calendar API v3）の呼び出しを専任で担う。
+ * 他のファイルはCalendar APIを直接触らない。取得・作成・更新・削除をここへ集約することで、
+ * 「Google Calendarが予定データの正本」という方針を1箇所のコードで保証する
+ * （このアプリは独自のイベント用DB/シートを一切持たない）。
  */
 
-function getTargetCalendar_() {
-  if (Config.CALENDAR_ID) {
-    var calendar = CalendarApp.getCalendarById(Config.CALENDAR_ID);
-    if (!calendar) {
-      throw new Error('Config.CALENDAR_ID で指定されたカレンダーが見つかりません: ' + Config.CALENDAR_ID);
+var MAX_RETRY_COUNT_ = 3;
+var RETRY_BASE_DELAY_MS_ = 500;
+
+function getTargetCalendarId_() {
+  return Config.CALENDAR_ID || 'primary';
+}
+
+/**
+ * Calendar APIの一時的な失敗（429 レート制限 / 5xx）に対する指数バックオフ付きリトライ。
+ * 401/403/404等の恒久的なエラーはリトライせずそのまま投げる。
+ */
+function callWithRetry_(fn) {
+  var attempt = 0;
+  while (true) {
+    try {
+      return fn();
+    } catch (e) {
+      var message = String((e && e.message) || e);
+      var isRetryable = /rate limit|quota|backend error|internal error|50\d|429/i.test(message);
+      attempt++;
+      if (!isRetryable || attempt >= MAX_RETRY_COUNT_) {
+        throw e;
+      }
+      Utilities.sleep(RETRY_BASE_DELAY_MS_ * Math.pow(2, attempt - 1));
     }
-    return calendar;
   }
-  return CalendarApp.getDefaultCalendar();
 }
 
 /**
- * eventData.recurrence.ruleType を CalendarApp.newRecurrence() のルールへ変換する。
- * 新しい繰り返し種別（隔週・毎月など）を追加する場合は、ここにエントリを1つ足すだけでよい
- * （Config.RECURRENCE_OPTIONS にも対応するruleType/intervalを追加する）。
+ * 指定期間（timeMin〜timeMax、いずれもISO文字列）の、このアプリが作成した予定だけを取得する。
+ * privateExtendedProperty での絞り込みにより、無関係な予定を毎回大量に取得しないようにしている。
  */
-var RECURRENCE_RULE_BUILDERS_ = {
-  weekly: function (rule, interval) {
-    return rule.addWeeklyRule().interval(interval);
-  },
-  monthly: function (rule, interval) {
-    return rule.addMonthlyRule().interval(interval);
-  }
-};
-
-function buildRecurrenceRule_(recurrence) {
-  var builder = RECURRENCE_RULE_BUILDERS_[recurrence.ruleType];
-  if (!builder) {
-    throw new Error('未対応の繰り返し種別です: ' + recurrence.ruleType);
-  }
-  var rule = builder(CalendarApp.newRecurrence(), recurrence.interval);
-  return rule.times(recurrence.count);
+function listCalendarEvents_(timeMinIso, timeMaxIso) {
+  var calendarId = getTargetCalendarId_();
+  var events = [];
+  var pageToken;
+  do {
+    var response = callWithRetry_(function () {
+      return Calendar.Events.list(calendarId, {
+        timeMin: timeMinIso,
+        timeMax: timeMaxIso,
+        singleEvents: true,
+        orderBy: 'startTime',
+        maxResults: 250,
+        pageToken: pageToken,
+        privateExtendedProperty: Config.APP_SOURCE_KEY + '=' + Config.APP_SOURCE_VALUE
+      });
+    });
+    events = events.concat(response.items || []);
+    pageToken = response.nextPageToken;
+  } while (pageToken);
+  return events;
 }
 
-function createTimedEvent_(calendar, eventData) {
-  var options = { description: eventData.description, location: eventData.location };
-  if (eventData.recurrence) {
-    return calendar.createEventSeries(
-      eventData.title,
-      eventData.start,
-      eventData.end,
-      buildRecurrenceRule_(eventData.recurrence),
-      options
-    );
-  }
-  return calendar.createEvent(eventData.title, eventData.start, eventData.end, options);
+function getCalendarEvent_(eventId) {
+  var calendarId = getTargetCalendarId_();
+  return callWithRetry_(function () {
+    return Calendar.Events.get(calendarId, eventId);
+  });
 }
 
-function createAllDayEvent_(calendar, eventData) {
-  var options = { description: eventData.description, location: eventData.location };
-  if (eventData.recurrence) {
-    return calendar.createAllDayEventSeries(
-      eventData.title,
-      eventData.date,
-      buildRecurrenceRule_(eventData.recurrence),
-      options
-    );
-  }
-  return calendar.createAllDayEvent(eventData.title, eventData.date, options);
+function insertCalendarEvent_(resource) {
+  var calendarId = getTargetCalendarId_();
+  return callWithRetry_(function () {
+    return Calendar.Events.insert(resource, calendarId);
+  });
 }
 
-/**
- * eventData（EventFactory.buildEventDataの戻り値）を元にイベントを作成し、
- * 作成したイベントのURL(htmlLink相当)を返す。
- */
-function createEvent(eventData) {
-  var calendar = getTargetCalendar_();
-  var event = eventData.isAllDay
-    ? createAllDayEvent_(calendar, eventData)
-    : createTimedEvent_(calendar, eventData);
-  return event;
+function patchCalendarEvent_(eventId, resource) {
+  var calendarId = getTargetCalendarId_();
+  return callWithRetry_(function () {
+    return Calendar.Events.patch(resource, calendarId, eventId);
+  });
+}
+
+function removeCalendarEvent_(eventId) {
+  var calendarId = getTargetCalendarId_();
+  callWithRetry_(function () {
+    Calendar.Events.remove(calendarId, eventId);
+  });
 }
