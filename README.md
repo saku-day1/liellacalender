@@ -1,8 +1,8 @@
 # Liella! キャスト出演予定管理ツール
 
-Liella!キャストの出演情報を、スマートフォンから専用フォームで入力し、**Googleカレンダーをデータの正本（Single Source of Truth）**として登録・閲覧・フィルター・編集・削除するための個人用ツールです。
+Liella!キャストの出演情報を、スマートフォンから専用フォームで入力し、**Googleカレンダーをデータの正本（Single Source of Truth）**として登録・閲覧・フィルター・編集・削除するためのツールです。「Googleカレンダーの代替」ではなく、**Googleカレンダーと双方向連携しながらLiella!の出演予定を独自に分類・フィルタリングできる専用フロントエンド**を目指しています。
 
-独自のイベント用データベース（Sheets等）は持ちません。予定そのものはすべてGoogle Calendar Eventとして保存し、Liella!用の分類情報（カテゴリ・グループ・出演者）もそのEvent自体の`extendedProperties.private`に構造化データとして保存します。タイトル文字列の解析でカテゴリや出演者を判定することはしません。
+独自のイベント用データベース（Sheets等）は持ちません。予定そのものはすべてGoogle Calendar Eventとして保存し、Liella!用の分類情報（カテゴリ・グループ・出演者）もそのEvent自体の`extendedProperties.private`に構造化データとして保存します。タイトル文字列の解析でカテゴリや出演者を判定することはしません。推しキャスト設定等のユーザー単位の情報も、DBを使わずGAS標準の`PropertiesService`（実行ユーザーごとに自動分離されるサーバー側ストレージ）に保存するため、ブラウザのキャッシュ削除や端末変更でも失われません。
 
 ```
 専用入力フォーム
@@ -24,9 +24,11 @@ Googleカレンダー側に登録された予定は、Googleアカウント経�
 - 出演者の複数選択、時間指定/終日イベントの切り替え、毎週・隔週・毎月の繰り返し登録
 - 会場（任意）はGoogleカレンダーの「場所」欄に登録
 - サーバー側での入力チェック（不正な入力はフィールドごとにエラー表示、登録は行わない）
-- 「カレンダー」タブでGoogleカレンダーから予定を取得し、月表示・当日の予定・予定一覧・詳細表示
-- カテゴリ・グループ・出演者によるフィルター（「ラジオを非表示」ワンタップ対応）
+- 「カレンダー」タブ（初期表示）でGoogleカレンダーから予定を取得し、月表示・当日の予定・予定一覧・詳細表示
+- **このアプリを使う前からGoogleカレンダーに登録していた予定もそのまま表示**され、詳細画面から出演者・カテゴリ等を追加するだけで「Liella!関連予定」として分類できる（タイトル・日時は変更しない）
+- カテゴリ・グループ・出演者・**推しキャストだけ**によるフィルター（「ラジオを非表示」「未分類の予定を表示」ワンタップ対応）
 - カレンダー上から予定の編集・削除（削除は確認ダイアログを挟む）
+- 「設定」タブで連携中のGoogleカレンダーの確認・推しキャスト設定・再読み込み/再同期
 
 ## ファイル構成
 
@@ -38,20 +40,22 @@ liellacalender/
 └── src/
     ├── appsscript.json     # GASマニフェスト（webapp設定・Calendar Advanced Service・Asia/Tokyo）
     ├── Config.js           # キャスト一覧・カテゴリ・グループ・Calendar ID等の設定値
-    ├── Validator.js        # フォームデータ・イベントID・取得期間のサーバー側検証
+    ├── Validator.js        # フォームデータ・イベントID・取得期間・分類データ・ユーザー設定のサーバー側検証
     ├── EventMapper.js      # アプリの内部データ形 ⇔ Calendar Event(extendedProperties含む) の変換
     ├── CalendarService.js  # Calendar API (Advanced Service) の呼び出し（取得/作成/更新/削除）を一箇所に集約
+    ├── UserSettings.js     # ユーザー単位の設定（推しキャスト等）の永続化（PropertiesService）
     ├── Code.js             # doGet + google.script.runから呼ばれるサーバー関数（唯一の入口）
-    └── index.html          # フォーム + カレンダーUI（HTML/CSS/JS、タブ切り替え）
+    └── index.html          # フォーム + カレンダーUI + 設定UI（HTML/CSS/JS、タブ切り替え）
 ```
 
 ### 各ファイルの役割
 
 - **Config.js**: キャスト一覧・カテゴリ・グループ・登録先カレンダー・各種上限値を1箇所に集約。運用ルールの変更をここだけの修正で完結させるため。
 - **Validator.js**: クライアントから届いたデータの検証だけを持つ。クライアント側のチェックは操作性のための補助であり、サーバー側の検証だけを信用する。
-- **EventMapper.js**: 「アプリが扱いやすい予定オブジェクト」と「Calendar API Eventリソース（`extendedProperties.private`含む）」の相互変換だけを担当。タイトル文字列の解析はしない（出演者・カテゴリは常に構造化データとして読み書きする）。
-- **CalendarService.js**: Calendar API (Advanced Service) の呼び出し（取得/作成/更新/削除、リトライ）だけを担当。他のファイルはCalendar APIを直接叩かない。
-- **Code.js**: `doGet`で画面を表示し、`submitEvent`/`fetchEvents`/`updateEvent`/`deleteEvent`の4つだけをクライアントに公開する。Validator→EventMapper→CalendarServiceの順に呼び出す。
+- **EventMapper.js**: 「アプリが扱いやすい予定オブジェクト」と「Calendar API Eventリソース（`extendedProperties.private`含む）」の相互変換だけを担当。タイトル文字列の解析はしない（出演者・カテゴリは常に構造化データとして読み書きする）。既存予定への分類専用に、summary/start/end等を変更しない `buildClassificationResource` も持つ。
+- **CalendarService.js**: Calendar API (Advanced Service) の呼び出し（取得/作成/更新/削除、リトライ、実行ユーザー識別）だけを担当。他のファイルはCalendar APIを直接叩かない。
+- **UserSettings.js**: `PropertiesService.getUserProperties()`（実行ユーザーごとに自動分離される、GAS標準のサーバー側キー・バリューストア）を使い、推しキャスト等のユーザー単位設定を読み書きする。DBを新設せず、ブラウザに依存しない永続化を実現するための層。
+- **Code.js**: `doGet`で画面を表示し、`submitEvent`/`fetchEvents`/`classifyEvent`/`updateEvent`/`deleteEvent`/`fetchUserSettings`/`submitUserSettings`/`fetchConnectionInfo`をクライアントに公開する。Validator→EventMapper→CalendarServiceの順に呼び出す。
 
 ---
 
@@ -136,6 +140,8 @@ clasp redeploy <デプロイID> --description "変更内容のメモ"
 4. 出演者フィルターで1人だけ選び、その人が出演する予定だけが表示されることを確認する
 5. 予定をタップして詳細を開き、「編集する」からタイトル・日時・出演者・カテゴリを変更して更新し、Googleカレンダー側にも反映されることを確認する
 6. 「削除する」をタップし、確認ダイアログが出ること、OKを押すとGoogleカレンダーから削除されることを確認する
+7. 事前にGoogleカレンダー側で（このアプリを使わずに）予定を1件作成しておき、「未分類の予定を表示」をタップして一覧に表示されることを確認する。タップして出演者・カテゴリを設定し保存すると、タイトル・日時が変わらないまま分類済みとして扱われることを確認する
+8. 「設定」タブで推しキャストを選び保存し、「カレンダー」タブへ戻って「推しだけ」をタップすると、推しキャストの予定だけに絞り込まれることを確認する
 
 ## よくあるエラーと対処方法
 
@@ -145,6 +151,26 @@ clasp redeploy <デプロイID> --description "変更内容のメモ"
 | Webアプリを開くと「このアプリにアクセスできません」等が表示される | デプロイ設定の「アクセスできるユーザー」が自分のGoogleアカウントになっているか確認する |
 | フォームを直しても反映されない | `clasp push`はしたが`clasp redeploy <デプロイID>`を実行していない可能性が高い |
 | 予定が一覧に出てこない | `Config.CALENDAR_ID`が正しいか、対象カレンダーにこのアプリで作成した予定があるか確認する（このアプリが作成した予定のみを`extendedProperties`で絞り込んで表示している） |
+
+## 一般公開する場合（任意・実行は慎重に）
+
+現在の`appsscript.json`は`webapp.access: "MYSELF"`（デプロイした本人のみアクセス可）のままです。将来、他のユーザーにも公開したくなった場合は、以下の変更だけで実現できます。**独自のOAuthサーバーやログイン画面の実装は不要です。**
+
+1. `appsscript.json`の`webapp.access`を`"MYSELF"`から`"ANYONE"`に変更し、`clasp push` → `clasp redeploy`する
+2. GASエディタの「デプロイ」設定でも「アクセスできるユーザー」を「全員」に変更する
+
+これだけで、以下がすべて自動的に成立します（`executeAs: "USER_ACCESSING"`により、Calendar APIが常にアクセスしてきた本人の権限で実行されるため）。
+
+- 各ユーザーは自分自身のGoogleアカウントでアプリを開き、初回アクセス時にGoogleの標準同意画面でCalendarへのアクセスを許可する（＝実質的なGoogleログイン）
+- 予定は各ユーザー自身のGoogleカレンダー（`primary`）に保存され、他ユーザーのカレンダーと混ざらない
+- 推しキャスト設定等も`PropertiesService.getUserProperties()`によりユーザーごとに自動分離される
+- 開発者（デプロイした本人）も他ユーザーのカレンダー内容やユーザー設定を参照できない
+
+公開前に確認しておきたいこと:
+
+- `Config.ALLOWED_EMAIL`が空であること（設定されていると本人以外が弾かれる）
+- 想定外の大量アクセスやAPIクォータ超過（Calendar APIには1日あたりのクォータがある）を許容できるか
+- 設定タブの非公式ツールである旨の注記が表示されていること
 
 ## 今後の拡張予定
 
