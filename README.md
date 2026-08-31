@@ -55,7 +55,7 @@ liellacalender/
 - **EventMapper.js**: 「アプリが扱いやすい予定オブジェクト」と「Calendar API Eventリソース（`extendedProperties.private`含む）」の相互変換だけを担当。タイトル文字列の解析はしない（出演者・カテゴリは常に構造化データとして読み書きする）。既存予定への分類専用に、summary/start/end等を変更しない `buildClassificationResource` も持つ。
 - **CalendarService.js**: Calendar API (Advanced Service) の呼び出し（取得/作成/更新/削除、リトライ、実行ユーザー識別）だけを担当。他のファイルはCalendar APIを直接叩かない。
 - **UserSettings.js**: `PropertiesService.getUserProperties()`（実行ユーザーごとに自動分離される、GAS標準のサーバー側キー・バリューストア）を使い、推しキャスト等のユーザー単位設定を読み書きする。DBを新設せず、ブラウザに依存しない永続化を実現するための層。
-- **Code.js**: `doGet`で画面を表示し、`submitEvent`/`fetchEvents`/`classifyEvent`/`updateEvent`/`deleteEvent`/`fetchUserSettings`/`submitUserSettings`/`fetchConnectionInfo`をクライアントに公開する。Validator→EventMapper→CalendarServiceの順に呼び出す。
+- **Code.js**: `doGet`で画面（アプリ本体/プライバシーポリシー/利用規約）を表示し、`submitEvent`/`fetchEvents`/`classifyEvent`/`updateEvent`/`deleteEvent`/`fetchUserSettings`/`submitUserSettings`をクライアントに公開する。Validator→EventMapper→CalendarServiceの順に呼び出す。
 
 ---
 
@@ -124,7 +124,7 @@ clasp redeploy <デプロイID> --description "変更内容のメモ"
 
 このアプリはNext.js等の自前OAuthサーバーを持つ構成ではなく、Google Apps Scriptのマネージド実行環境上で動きます。そのため一般的なWebアプリのセキュリティ要件の多くは、GASのプラットフォームが代わりに担っています。
 
-- **OAuthトークンの管理**: Client Secret・アクセストークン・リフレッシュトークンはこのアプリのコードが一切扱いません。Googleが認証・トークン管理を行い、スクリプトはGoogleの実行基盤の中でのみ、許可されたスコープ（`https://www.googleapis.com/auth/calendar`）でCalendar APIを呼び出せます。ブラウザにトークンが渡ることもありません。
+- **OAuthトークンの管理**: Client Secret・アクセストークン・リフレッシュトークンはこのアプリのコードが一切扱いません。Googleが認証・トークン管理を行い、スクリプトはGoogleの実行基盤の中でのみ、許可されたスコープ（`https://www.googleapis.com/auth/calendar.events`、予定＝イベントの読み書きのみに絞ったスコープ）でCalendar APIを呼び出せます。ブラウザにトークンが渡ることもありません。
 - **アクセス制御**: `appsscript.json`の`webapp.access: "MYSELF"`により、デプロイしたGoogleアカウント本人以外はWebアプリ自体を開けません。加えて`Config.ALLOWED_EMAIL`を設定すると、`Session.getActiveUser().getEmail()`（クライアントの申告ではなくGASの実行コンテキストから取得）によるサーバー側の二重チェックが有効になります。
 - **入力検証**: `Validator.js`でtitle/URL/日時/category/casts/description/memoすべてを型・長さ・許可値でサーバー側検証。クライアント側の制御を経由しない直接呼び出しでも不正なデータは登録されません。
 - **XSS対策**: カレンダーから取得したタイトル・説明等は`escapeHtml()`でエスケープしてから描画。`dangerouslySetInnerHTML`相当の危険な埋め込みは使用していません。URLは`http(s)://`で始まる場合のみリンク化します。

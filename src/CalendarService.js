@@ -13,28 +13,6 @@ function getTargetCalendarId_() {
 }
 
 /**
- * 現在の実行ユーザー（executeAs: USER_ACCESSING により、Webアプリへ
- * アクセスしている本人）を識別するIDを返す。
- * Session.getActiveUser().getEmail() は個人アカウント＋ANYONE公開の
- * 組み合わせだと空文字になることがあるため、代わりに実行者自身の
- * 主カレンダーIDを使う（通常はメールアドレスと同じ値になる、Calendar API
- * が実行者本人の権限で呼ばれることを利用したより確実な識別方法）。
- */
-function getCurrentUserId_() {
-  try {
-    var calendarList = callWithRetry_(function () {
-      return Calendar.CalendarList.get('primary');
-    });
-    if (calendarList && calendarList.id) {
-      return calendarList.id;
-    }
-  } catch (e) {
-    // フォールバックへ
-  }
-  return Session.getActiveUser().getEmail() || '';
-}
-
-/**
  * Calendar APIの一時的な失敗（429 レート制限 / 5xx）に対する指数バックオフ付きリトライ。
  * 401/403/404等の恒久的なエラーはリトライせずそのまま投げる。
  */

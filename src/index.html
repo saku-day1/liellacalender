@@ -380,10 +380,8 @@
 
   <!-- ===================== 設定タブ ===================== -->
   <div class="tab-panel container" id="tab-settings">
-    <h2>連携状態</h2>
+    <h2>同期</h2>
     <div class="filter-panel">
-      <div class="detail-row"><span class="label">連携中のGoogleカレンダー</span></div>
-      <div class="detail-row" id="connectionInfoText">確認中…</div>
       <button type="button" class="secondary" id="resyncButton">再読み込み / 再同期</button>
     </div>
 
@@ -1384,16 +1382,6 @@
     function ensureSettingsPanelLoaded() {
       if (settingsPanelLoaded) { return; }
       settingsPanelLoaded = true;
-
-      google.script.run
-        .withSuccessHandler(function (result) {
-          var el = document.getElementById('connectionInfoText');
-          el.textContent = (result.success && result.userId) ? result.userId : '取得できませんでした';
-        })
-        .withFailureHandler(function () {
-          document.getElementById('connectionInfoText').textContent = '取得できませんでした';
-        })
-        .fetchConnectionInfo();
 
       var applyFavoriteCasts = function () {
         document.querySelectorAll('#settingsCastGrid input[name="favoriteCasts"]').forEach(function (checkbox) {
