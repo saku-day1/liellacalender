@@ -178,18 +178,24 @@
     .modal-actions { display: flex; gap: 10px; margin-top: 16px; }
     .modal-actions > * { flex: 1; }
     a.detail-link { color: #ff5a8a; word-break: break-all; }
+
+    .disclaimer {
+      font-size: 11px; color: #8e8e93; padding: 2px 16px 0; margin: 0;
+    }
   </style>
 </head>
 <body>
   <h1>Liella! キャスト出演予定管理</h1>
+  <p class="disclaimer">非公式のファン制作ツールです。公式運営とは関係ありません。</p>
 
   <div class="tabbar">
-    <button type="button" class="tab-button active" data-tab="register">登録</button>
-    <button type="button" class="tab-button" data-tab="calendar">カレンダー</button>
+    <button type="button" class="tab-button active" data-tab="calendar">カレンダー</button>
+    <button type="button" class="tab-button" data-tab="register">予定追加</button>
+    <button type="button" class="tab-button" data-tab="settings">設定</button>
   </div>
 
   <!-- ===================== 登録タブ ===================== -->
-  <div class="tab-panel active container" id="tab-register">
+  <div class="tab-panel container" id="tab-register">
     <form id="eventForm">
       <div class="field">
         <span class="field-label required">出演者</span>
@@ -314,7 +320,7 @@
   </div>
 
   <!-- ===================== カレンダータブ ===================== -->
-  <div class="tab-panel container" id="tab-calendar">
+  <div class="tab-panel active container" id="tab-calendar">
     <div class="filter-panel">
       <div class="filter-toggle-bar">
         <span class="field-label" style="margin:0;">フィルター</span>
@@ -369,6 +375,40 @@
     </div>
 
     <div class="status-message" id="calendarStatusMessage"></div>
+  </div>
+
+  <!-- ===================== 設定タブ ===================== -->
+  <div class="tab-panel container" id="tab-settings">
+    <h2>連携状態</h2>
+    <div class="filter-panel">
+      <div class="detail-row"><span class="label">連携中のGoogleカレンダー</span></div>
+      <div class="detail-row" id="connectionInfoText">確認中…</div>
+      <button type="button" class="secondary" id="resyncButton">再読み込み / 再同期</button>
+    </div>
+
+    <h2 style="margin-top:20px;">推しキャスト設定</h2>
+    <div class="filter-panel">
+      <p class="classify-hint">選択したキャストは、カレンダー画面の「推しだけ」フィルターの対象になります（複数選択可）。</p>
+      <div class="cast-grid" id="settingsCastGrid">
+        <? castList.forEach(function(cast) { ?>
+          <label class="cast-option">
+            <input type="checkbox" name="favoriteCasts" value="<?= cast ?>">
+            <span><?= cast ?></span>
+          </label>
+        <? }); ?>
+      </div>
+      <div class="error-text" data-error-for="favoriteCasts"></div>
+      <button type="button" class="primary" id="saveFavoriteCastsButton">推しキャストを保存</button>
+      <div class="status-message" id="settingsStatusMessage"></div>
+    </div>
+
+    <h2 style="margin-top:20px;">このアプリについて</h2>
+    <div class="filter-panel">
+      <p class="classify-hint" style="margin:0;">
+        本アプリは非公式のファン制作ツールであり、株式会社バンダイナムコミュージックライブ等の公式運営とは一切関係ありません。<br>
+        予定データはご自身のGoogleカレンダーに保存され、開発者を含む他者からは参照できません。
+      </p>
+    </div>
   </div>
 
   <!-- ===================== イベント詳細/編集モーダル ===================== -->
@@ -544,6 +584,8 @@
         document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
         if (btn.dataset.tab === 'calendar') {
           ensureCalendarLoaded();
+        } else if (btn.dataset.tab === 'settings') {
+          ensureSettingsPanelLoaded();
         }
       });
     });
@@ -1331,6 +1373,83 @@
         })
         .updateEvent(currentDetailEvent.id, formData);
     });
+
+    // ===================== 設定タブ =====================
+    var settingsPanelLoaded = false;
+
+    function ensureSettingsPanelLoaded() {
+      if (settingsPanelLoaded) { return; }
+      settingsPanelLoaded = true;
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          var el = document.getElementById('connectionInfoText');
+          el.textContent = (result.success && result.userId) ? result.userId : '取得できませんでした';
+        })
+        .withFailureHandler(function () {
+          document.getElementById('connectionInfoText').textContent = '取得できませんでした';
+        })
+        .fetchConnectionInfo();
+
+      var applyFavoriteCasts = function () {
+        document.querySelectorAll('#settingsCastGrid input[name="favoriteCasts"]').forEach(function (checkbox) {
+          checkbox.checked = userSettings.favoriteCasts.indexOf(checkbox.value) !== -1;
+        });
+      };
+      if (userSettingsLoaded) {
+        applyFavoriteCasts();
+      } else {
+        loadUserSettings(applyFavoriteCasts);
+      }
+    }
+
+    document.getElementById('resyncButton').addEventListener('click', function () {
+      settingsPanelLoaded = false;
+      userSettingsLoaded = false;
+      invalidateEventCache();
+      ensureSettingsPanelLoaded();
+    });
+
+    document.getElementById('saveFavoriteCastsButton').addEventListener('click', function () {
+      var button = this;
+      var errorEl = document.querySelector('#tab-settings [data-error-for="favoriteCasts"]');
+      var statusEl = document.getElementById('settingsStatusMessage');
+      errorEl.textContent = '';
+      statusEl.textContent = '';
+      statusEl.className = 'status-message';
+
+      var favoriteCasts = Array.prototype.slice
+        .call(document.querySelectorAll('#settingsCastGrid input[name="favoriteCasts"]:checked'))
+        .map(function (el) { return el.value; });
+
+      button.disabled = true;
+      button.textContent = '保存中…';
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          button.disabled = false;
+          button.textContent = '推しキャストを保存';
+          if (result.success) {
+            userSettings = result.settings;
+            statusEl.textContent = '保存しました';
+            statusEl.className = 'status-message success';
+          } else {
+            errorEl.textContent = (result.errors && result.errors.favoriteCasts) || '保存に失敗しました';
+            statusEl.textContent = '入力内容を確認してください';
+            statusEl.className = 'status-message error';
+          }
+        })
+        .withFailureHandler(function (error) {
+          button.disabled = false;
+          button.textContent = '推しキャストを保存';
+          statusEl.textContent = '通信エラーが発生しました: ' + error.message;
+          statusEl.className = 'status-message error';
+        })
+        .submitUserSettings({ favoriteCasts: favoriteCasts });
+    });
+
+    // 初期表示はカレンダータブのため、ページ読み込み時に自動で読み込む
+    ensureCalendarLoaded();
   </script>
 </body>
 </html>
