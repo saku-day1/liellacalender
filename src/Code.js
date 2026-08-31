@@ -56,6 +56,37 @@ function fetchConnectionInfo() {
 }
 
 /**
+ * ユーザー設定（推しキャスト等）の取得。
+ */
+function fetchUserSettings() {
+  assertAuthorized_();
+  try {
+    return { success: true, settings: getUserSettings() };
+  } catch (e) {
+    return buildGeneralErrorResult_(e);
+  }
+}
+
+/**
+ * ユーザー設定（推しキャスト等）の保存。
+ */
+function submitUserSettings(settings) {
+  assertAuthorized_();
+
+  var validation = validateUserSettings(settings);
+  if (!validation.valid) {
+    return { success: false, errors: validation.errors };
+  }
+
+  try {
+    saveUserSettings_({ favoriteCasts: settings.favoriteCasts });
+    return { success: true, settings: getUserSettings() };
+  } catch (e) {
+    return buildGeneralErrorResult_(e);
+  }
+}
+
+/**
  * 新規イベント登録。クライアントから呼ばれる唯一の作成用エントリ。
  */
 function submitEvent(formData) {

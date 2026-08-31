@@ -164,6 +164,29 @@ function isValidEventId_(value) {
 }
 
 /**
+ * ユーザー設定（推しキャスト等）の検証。
+ * クライアントからの直接呼び出しでも、Config.CAST_LIST に存在しない
+ * 値が保存されないようにする。
+ */
+function validateUserSettings(settings) {
+  var errors = {};
+  settings = settings || {};
+
+  if (!Array.isArray(settings.favoriteCasts)) {
+    errors.favoriteCasts = '推しキャストの指定が不正です';
+  } else {
+    var invalidCast = settings.favoriteCasts.some(function (cast) {
+      return Config.CAST_LIST.indexOf(cast) === -1;
+    });
+    if (invalidCast) {
+      errors.favoriteCasts = '推しキャストの指定が不正です';
+    }
+  }
+
+  return { valid: Object.keys(errors).length === 0, errors: errors };
+}
+
+/**
  * カレンダー表示用の取得期間（ISO日時文字列）を検証する。
  * 一度に取得できる期間の上限を設け、不用意に広い範囲を何度も取得させないようにする。
  */
