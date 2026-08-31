@@ -43,6 +43,19 @@ function buildGeneralErrorResult_(e) {
 }
 
 /**
+ * 現在アプリを利用しているユーザーの識別情報（連携中のカレンダーID）を返す。
+ * 設定画面の「連携状態」表示や、将来のユーザー単位機能の土台として使う。
+ */
+function fetchConnectionInfo() {
+  assertAuthorized_();
+  try {
+    return { success: true, userId: getCurrentUserId_() };
+  } catch (e) {
+    return buildGeneralErrorResult_(e);
+  }
+}
+
+/**
  * 新規イベント登録。クライアントから呼ばれる唯一の作成用エントリ。
  */
 function submitEvent(formData) {
