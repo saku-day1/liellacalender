@@ -383,6 +383,7 @@
     <h2>同期</h2>
     <div class="filter-panel">
       <button type="button" class="secondary" id="resyncButton">再読み込み / 再同期</button>
+      <div class="status-message" id="resyncStatusMessage"></div>
     </div>
 
     <h2 style="margin-top:20px;">推しキャスト設定</h2>
@@ -898,9 +899,13 @@
       }
     }
 
-    function invalidateEventCache() {
+    function invalidateEventCache(onDone) {
       eventCache = {};
-      if (calendarLoaded) { loadAndRenderMonth(); }
+      if (calendarLoaded) {
+        loadAndRenderMonth(onDone);
+      } else if (onDone) {
+        onDone();
+      }
     }
 
     function setCalendarStatus(text, isError) {
@@ -909,11 +914,12 @@
       el.className = 'status-message' + (isError ? ' error' : '');
     }
 
-    function loadAndRenderMonth() {
+    function loadAndRenderMonth(onDone) {
       var key = monthKey(currentMonth);
       var cached = eventCache[key];
       if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
         renderCurrentView();
+        if (onDone) { onDone(); }
         return;
       }
       setCalendarStatus('読み込み中…', false);
@@ -929,9 +935,11 @@
           } else {
             setCalendarStatus((result.errors && result.errors.general) || '予定の取得に失敗しました', true);
           }
+          if (onDone) { onDone(); }
         })
         .withFailureHandler(function (error) {
           setCalendarStatus('通信エラーが発生しました: ' + error.message, true);
+          if (onDone) { onDone(); }
         })
         .fetchEvents(rangeStart.toISOString(), rangeEnd.toISOString());
     }
@@ -1396,10 +1404,33 @@
     }
 
     document.getElementById('resyncButton').addEventListener('click', function () {
-      settingsPanelLoaded = false;
+      var button = this;
+      var statusEl = document.getElementById('resyncStatusMessage');
+      button.disabled = true;
+      button.textContent = '同期中…';
+      statusEl.textContent = '';
+      statusEl.className = 'status-message';
+
+      var pending = 2;
+      function checkDone() {
+        pending--;
+        if (pending > 0) { return; }
+        button.disabled = false;
+        button.textContent = '再読み込み / 再同期';
+        statusEl.textContent = '同期しました';
+        statusEl.className = 'status-message success';
+      }
+
+      invalidateEventCache(checkDone);
+
       userSettingsLoaded = false;
-      invalidateEventCache();
-      ensureSettingsPanelLoaded();
+      loadUserSettings(function () {
+        document.querySelectorAll('#settingsCastGrid input[name="favoriteCasts"]').forEach(function (checkbox) {
+          checkbox.checked = userSettings.favoriteCasts.indexOf(checkbox.value) !== -1;
+        });
+        settingsPanelLoaded = true;
+        checkDone();
+      });
     });
 
     document.getElementById('saveFavoriteCastsButton').addEventListener('click', function () {
