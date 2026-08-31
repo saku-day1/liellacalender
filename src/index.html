@@ -323,6 +323,7 @@
       <div class="chip-row">
         <button type="button" class="chip" id="hideRadioButton">ラジオを非表示</button>
         <button type="button" class="chip" id="showUnclassifiedButton">未分類の予定を表示</button>
+        <button type="button" class="chip" id="oshiOnlyButton">推しだけ</button>
       </div>
 
       <div class="filter-body" id="filterBody">
@@ -685,10 +686,31 @@
     var filters = {
       hideRadio: false,
       showUnclassified: false,
+      oshiOnly: false,
       categories: new Set(CATEGORY_LIST.map(function (c) { return c.value; })),
       groups: new Set(GROUP_LIST.map(function (g) { return g.value; })),
       casts: new Set(CAST_LIST)
     };
+
+    // ===== ユーザー設定（推しキャスト等） =====
+    var userSettings = { favoriteCasts: [] };
+    var userSettingsLoaded = false;
+
+    function loadUserSettings(onDone) {
+      google.script.run
+        .withSuccessHandler(function (result) {
+          if (result.success) {
+            userSettings = result.settings;
+          }
+          userSettingsLoaded = true;
+          if (onDone) { onDone(); }
+        })
+        .withFailureHandler(function () {
+          userSettingsLoaded = true;
+          if (onDone) { onDone(); }
+        })
+        .fetchUserSettings();
+    }
 
     var currentMonth = startOfMonth(new Date());
     var selectedDate = new Date();
@@ -737,6 +759,18 @@
       filters.showUnclassified = !filters.showUnclassified;
       showUnclassifiedButton.classList.toggle('active', filters.showUnclassified);
       showUnclassifiedButton.textContent = filters.showUnclassified ? '未分類の予定を表示 中' : '未分類の予定を表示';
+      renderCurrentView();
+    });
+
+    var oshiOnlyButton = document.getElementById('oshiOnlyButton');
+    oshiOnlyButton.addEventListener('click', function () {
+      if (!filters.oshiOnly && userSettings.favoriteCasts.length === 0) {
+        window.alert('推しキャストが設定されていません。「設定」タブから設定してください。');
+        return;
+      }
+      filters.oshiOnly = !filters.oshiOnly;
+      oshiOnlyButton.classList.toggle('active', filters.oshiOnly);
+      oshiOnlyButton.textContent = filters.oshiOnly ? '推しだけ 中' : '推しだけ';
       renderCurrentView();
     });
 
@@ -813,7 +847,11 @@
     function ensureCalendarLoaded() {
       if (calendarLoaded) { return; }
       calendarLoaded = true;
-      loadAndRenderMonth();
+      if (!userSettingsLoaded) {
+        loadUserSettings(loadAndRenderMonth);
+      } else {
+        loadAndRenderMonth();
+      }
     }
 
     function invalidateEventCache() {
@@ -870,6 +908,10 @@
       if (!filters.groups.has(appEvent.group)) { return false; }
       var hasMatchingCast = appEvent.casts.some(function (cast) { return filters.casts.has(cast); });
       if (appEvent.casts.length > 0 && !hasMatchingCast) { return false; }
+      if (filters.oshiOnly) {
+        var hasFavoriteCast = appEvent.casts.some(function (cast) { return userSettings.favoriteCasts.indexOf(cast) !== -1; });
+        if (!hasFavoriteCast) { return false; }
+      }
       return true;
     }
 
