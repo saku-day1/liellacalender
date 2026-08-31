@@ -111,6 +111,10 @@ function submitEvent(formData) {
  * 指定期間（ISO日時文字列）のイベント一覧を取得する。
  * カレンダー画面の月表示・一覧表示は、表示中の期間分だけをこの関数経由で取得する
  * （不要な全期間取得を避けるため）。
+ *
+ * このアプリ作成/分類済みの予定だけでなく、Googleカレンダーに元々あった
+ * 未分類の予定も含めて返す（isClassified で判別）。これにより、このアプリを
+ * 使う前から登録していた予定を登録し直す必要なく、アプリ側で分類・閲覧できる。
  */
 function fetchEvents(rangeStartIso, rangeEndIso) {
   assertAuthorized_();
@@ -120,8 +124,35 @@ function fetchEvents(rangeStartIso, rangeEndIso) {
   }
 
   try {
-    var events = listCalendarEvents_(rangeStartIso, rangeEndIso);
+    var events = listAllCalendarEvents_(rangeStartIso, rangeEndIso);
     return { success: true, events: events.map(toAppEvent) };
+  } catch (e) {
+    return buildGeneralErrorResult_(e);
+  }
+}
+
+/**
+ * Googleカレンダーに元々あった未分類の予定を「Liella!関連予定」として分類する。
+ * タイトル・日時・場所・説明は一切変更せず、Liella!専用メタデータ
+ * （出演者・カテゴリ・グループ・URL・備考）のみを追記する。
+ */
+function classifyEvent(eventId, metadata) {
+  assertAuthorized_();
+
+  if (!isValidEventId_(eventId)) {
+    return { success: false, errors: { general: 'イベントの指定が不正です' } };
+  }
+
+  var validation = validateClassificationData(metadata);
+  if (!validation.valid) {
+    return { success: false, errors: validation.errors };
+  }
+
+  try {
+    var normalized = normalizeFormData_(metadata);
+    var resource = buildClassificationResource(normalized);
+    var updated = patchCalendarEvent_(eventId, resource);
+    return { success: true, event: toAppEvent(updated) };
   } catch (e) {
     return buildGeneralErrorResult_(e);
   }

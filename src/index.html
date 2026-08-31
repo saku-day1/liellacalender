@@ -152,7 +152,11 @@
       display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 999px;
       background: #f2f2f7; color: #3a3a3c; margin-right: 4px;
     }
+    .badge.unclassified { background: #fff2d9; color: #b06a00; }
+    .event-card.unclassified { opacity: 0.75; border-style: dashed; }
+    .day-dot.unclassified { background: #c7c7cc; }
     .empty-message { text-align: center; color: #8e8e93; font-size: 13px; padding: 20px 0; }
+    .classify-hint { font-size: 13px; color: #8e8e93; margin: 0 0 4px; }
 
     /* モーダル */
     .modal-overlay {
@@ -316,7 +320,10 @@
         <span class="field-label" style="margin:0;">フィルター</span>
         <button type="button" class="link" id="filterToggleButton">開く</button>
       </div>
-      <button type="button" class="chip" id="hideRadioButton" style="align-self:flex-start;">ラジオを非表示</button>
+      <div class="chip-row">
+        <button type="button" class="chip" id="hideRadioButton">ラジオを非表示</button>
+        <button type="button" class="chip" id="showUnclassifiedButton">未分類の予定を表示</button>
+      </div>
 
       <div class="filter-body" id="filterBody">
         <div class="filter-section">
@@ -371,7 +378,54 @@
         <button type="button" class="close" data-close-modal="detailModal">×</button>
       </div>
       <div id="detailBody"></div>
-      <div class="modal-actions">
+      <div id="classifyFormWrapper" style="display:none;">
+        <p class="classify-hint">Googleカレンダーに元々あった予定です。出演者・カテゴリを設定するとLiella!専用フィルターの対象になります（タイトル・日時は変更されません）。</p>
+        <form id="classifyForm">
+          <div class="field">
+            <span class="field-label required">出演者</span>
+            <div class="cast-grid" id="classifyCastGrid">
+              <? castList.forEach(function(cast) { ?>
+                <label class="cast-option">
+                  <input type="checkbox" name="casts" value="<?= cast ?>">
+                  <span><?= cast ?></span>
+                </label>
+              <? }); ?>
+            </div>
+            <div class="error-text" data-error-for="casts"></div>
+          </div>
+          <div class="field">
+            <label class="field-label required" for="classifyCategory">カテゴリ</label>
+            <select id="classifyCategory" name="category">
+              <option value="">選択してください</option>
+              <? categoryList.forEach(function(category) { ?>
+                <option value="<?= category.value ?>"><?= category.label ?></option>
+              <? }); ?>
+            </select>
+            <div class="error-text" data-error-for="category"></div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="classifyGroup">グループ</label>
+            <select id="classifyGroup" name="group">
+              <? groupList.forEach(function(group) { ?>
+                <option value="<?= group.value ?>"><?= group.label ?></option>
+              <? }); ?>
+            </select>
+          </div>
+          <div class="field">
+            <label class="field-label" for="classifyUrl">公式URL</label>
+            <input type="url" id="classifyUrl" name="url">
+            <div class="error-text" data-error-for="url"></div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="classifyMemo">備考</label>
+            <textarea id="classifyMemo" name="memo"></textarea>
+          </div>
+          <div class="error-text" data-error-for="general"></div>
+          <button type="submit" class="primary" id="classifySaveButton">Liella!関連予定として分類</button>
+          <div class="status-message" id="classifyStatusMessage"></div>
+        </form>
+      </div>
+      <div class="modal-actions" id="detailActions">
         <button type="button" class="secondary" id="editEventButton">編集する</button>
         <button type="button" class="danger" id="deleteEventButton">削除する</button>
       </div>
@@ -630,6 +684,7 @@
 
     var filters = {
       hideRadio: false,
+      showUnclassified: false,
       categories: new Set(CATEGORY_LIST.map(function (c) { return c.value; })),
       groups: new Set(GROUP_LIST.map(function (g) { return g.value; })),
       casts: new Set(CAST_LIST)
@@ -674,6 +729,14 @@
       filters.hideRadio = !filters.hideRadio;
       hideRadioButton.classList.toggle('toggle-off', filters.hideRadio);
       hideRadioButton.textContent = filters.hideRadio ? 'ラジオ非表示 中' : 'ラジオを非表示';
+      renderCurrentView();
+    });
+
+    var showUnclassifiedButton = document.getElementById('showUnclassifiedButton');
+    showUnclassifiedButton.addEventListener('click', function () {
+      filters.showUnclassified = !filters.showUnclassified;
+      showUnclassifiedButton.classList.toggle('active', filters.showUnclassified);
+      showUnclassifiedButton.textContent = filters.showUnclassified ? '未分類の予定を表示 中' : '未分類の予定を表示';
       renderCurrentView();
     });
 
@@ -797,6 +860,11 @@
     }
 
     function matchesFilter(appEvent) {
+      if (!appEvent.isClassified) {
+        // 未分類の予定はカテゴリ・出演者等の値を持たないため、
+        // 「未分類の予定を表示」トグルのみで表示可否を決める。
+        return filters.showUnclassified;
+      }
       if (filters.hideRadio && appEvent.category === RADIO_CATEGORY_VALUE) { return false; }
       if (!filters.categories.has(appEvent.category)) { return false; }
       if (!filters.groups.has(appEvent.group)) { return false; }
@@ -829,7 +897,9 @@
       events.forEach(function (ev) {
         var d = new Date(ev.start);
         var key = toDateKey(d);
-        eventsByDate[key] = (eventsByDate[key] || 0) + 1;
+        if (!eventsByDate[key]) { eventsByDate[key] = { count: 0, hasUnclassified: false }; }
+        eventsByDate[key].count++;
+        if (!ev.isClassified) { eventsByDate[key].hasUnclassified = true; }
       });
 
       var firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
@@ -854,13 +924,13 @@
         num.textContent = cellDate.getDate();
         cell.appendChild(num);
 
-        var count = eventsByDate[toDateKey(cellDate)] || 0;
-        if (count > 0) {
+        var dayInfo = eventsByDate[toDateKey(cellDate)];
+        if (dayInfo && dayInfo.count > 0) {
           var dots = document.createElement('span');
           dots.className = 'day-dots';
-          for (var d = 0; d < Math.min(count, 4); d++) {
+          for (var d = 0; d < Math.min(dayInfo.count, 4); d++) {
             var dot = document.createElement('span');
-            dot.className = 'day-dot';
+            dot.className = 'day-dot' + (dayInfo.hasUnclassified ? ' unclassified' : '');
             dots.appendChild(dot);
           }
           cell.appendChild(dots);
@@ -889,14 +959,19 @@
     function buildEventCard(appEvent) {
       var card = document.createElement('button');
       card.type = 'button';
-      card.className = 'event-card';
+      card.className = 'event-card' + (appEvent.isClassified ? '' : ' unclassified');
+      var metaHtml;
+      if (appEvent.isClassified) {
+        metaHtml =
+          '<span class="badge">' + escapeHtml(categoryLabel(appEvent.category)) + '</span>' +
+          '<span class="badge">' + escapeHtml(appEvent.casts.join('・')) + '</span>';
+      } else {
+        metaHtml = '<span class="badge unclassified">未分類</span>';
+      }
       card.innerHTML =
         '<span class="event-time">' + escapeHtml(formatEventTime(appEvent)) + '</span>' +
         '<span class="event-title">' + escapeHtml(appEvent.title) + '</span>' +
-        '<span class="event-meta">' +
-        '<span class="badge">' + escapeHtml(categoryLabel(appEvent.category)) + '</span>' +
-        '<span class="badge">' + escapeHtml(appEvent.casts.join('・')) + '</span>' +
-        '</span>';
+        '<span class="event-meta">' + metaHtml + '</span>';
       card.addEventListener('click', function () { openDetailModal(appEvent); });
       return card;
     }
@@ -964,12 +1039,19 @@
     function openDetailModal(appEvent) {
       currentDetailEvent = appEvent;
       var body = document.getElementById('detailBody');
+      var classifyWrapper = document.getElementById('classifyFormWrapper');
+      var detailActions = document.getElementById('detailActions');
+
       var html =
         '<div class="detail-row"><span class="label">タイトル</span>' + escapeHtml(appEvent.title) + '</div>' +
-        '<div class="detail-row"><span class="label">日時</span>' + escapeHtml(formatDateTimeRange(appEvent)) + '</div>' +
-        '<div class="detail-row"><span class="label">カテゴリ</span>' + escapeHtml(categoryLabel(appEvent.category)) + '</div>' +
-        '<div class="detail-row"><span class="label">グループ</span>' + escapeHtml(groupLabel(appEvent.group)) + '</div>' +
-        '<div class="detail-row"><span class="label">出演者</span>' + escapeHtml(appEvent.casts.join('、')) + '</div>';
+        '<div class="detail-row"><span class="label">日時</span>' + escapeHtml(formatDateTimeRange(appEvent)) + '</div>';
+
+      if (appEvent.isClassified) {
+        html +=
+          '<div class="detail-row"><span class="label">カテゴリ</span>' + escapeHtml(categoryLabel(appEvent.category)) + '</div>' +
+          '<div class="detail-row"><span class="label">グループ</span>' + escapeHtml(groupLabel(appEvent.group)) + '</div>' +
+          '<div class="detail-row"><span class="label">出演者</span>' + escapeHtml(appEvent.casts.join('、')) + '</div>';
+      }
       if (appEvent.venue) {
         html += '<div class="detail-row"><span class="label">会場</span>' + escapeHtml(appEvent.venue) + '</div>';
       }
@@ -984,9 +1066,88 @@
       if (appEvent.memo) {
         html += '<div class="detail-row"><span class="label">備考</span>' + escapeHtml(appEvent.memo) + '</div>';
       }
+      if (appEvent.htmlLink) {
+        html += '<div class="detail-row"><a class="detail-link" target="_blank" rel="noopener noreferrer" href="' + escapeHtml(appEvent.htmlLink) + '">Googleカレンダーで開く</a></div>';
+      }
       body.innerHTML = html;
+
+      if (appEvent.isClassified) {
+        classifyWrapper.style.display = 'none';
+        detailActions.style.display = 'flex';
+      } else {
+        classifyWrapper.style.display = 'block';
+        detailActions.style.display = 'none';
+        prepareClassifyForm();
+      }
+
       openModal('detailModal');
     }
+
+    // ---- 既存予定の分類フォーム ----
+    var classifyForm = document.getElementById('classifyForm');
+    var classifyStatusMessage = document.getElementById('classifyStatusMessage');
+
+    function prepareClassifyForm() {
+      classifyForm.querySelectorAll('input[name="casts"]').forEach(function (checkbox) { checkbox.checked = false; });
+      classifyForm.category.value = '';
+      classifyForm.group.value = 'liella';
+      classifyForm.url.value = '';
+      classifyForm.memo.value = '';
+      classifyForm.querySelectorAll('.error-text').forEach(function (el) { el.textContent = ''; });
+      classifyStatusMessage.textContent = '';
+      classifyStatusMessage.className = 'status-message';
+    }
+
+    classifyForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      if (!currentDetailEvent) { return; }
+
+      classifyForm.querySelectorAll('.error-text').forEach(function (el) { el.textContent = ''; });
+      classifyStatusMessage.textContent = '';
+      classifyStatusMessage.className = 'status-message';
+
+      var casts = Array.prototype.slice
+        .call(classifyForm.querySelectorAll('input[name="casts"]:checked'))
+        .map(function (el) { return el.value; });
+
+      var metadata = {
+        casts: casts,
+        category: classifyForm.category.value,
+        group: classifyForm.group.value,
+        url: classifyForm.url.value,
+        memo: classifyForm.memo.value
+      };
+
+      var saveButton = document.getElementById('classifySaveButton');
+      saveButton.disabled = true;
+      saveButton.textContent = '保存中…';
+
+      google.script.run
+        .withSuccessHandler(function (result) {
+          saveButton.disabled = false;
+          saveButton.textContent = 'Liella!関連予定として分類';
+          if (result.success) {
+            classifyStatusMessage.textContent = '分類しました';
+            classifyStatusMessage.className = 'status-message success';
+            invalidateEventCache();
+            closeModal('detailModal');
+          } else {
+            Object.keys(result.errors || {}).forEach(function (field) {
+              var el = classifyForm.querySelector('[data-error-for="' + field + '"]');
+              if (el) { el.textContent = result.errors[field]; }
+            });
+            classifyStatusMessage.textContent = '入力内容を確認してください';
+            classifyStatusMessage.className = 'status-message error';
+          }
+        })
+        .withFailureHandler(function (error) {
+          saveButton.disabled = false;
+          saveButton.textContent = 'Liella!関連予定として分類';
+          classifyStatusMessage.textContent = '通信エラーが発生しました: ' + error.message;
+          classifyStatusMessage.className = 'status-message error';
+        })
+        .classifyEvent(currentDetailEvent.id, metadata);
+    });
 
     document.getElementById('deleteEventButton').addEventListener('click', function () {
       if (!currentDetailEvent) { return; }

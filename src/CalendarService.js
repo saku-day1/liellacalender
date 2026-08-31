@@ -56,29 +56,48 @@ function callWithRetry_(fn) {
 }
 
 /**
- * 指定期間（timeMin〜timeMax、いずれもISO文字列）の、このアプリが作成した予定だけを取得する。
- * privateExtendedProperty での絞り込みにより、無関係な予定を毎回大量に取得しないようにしている。
+ * 指定期間（timeMin〜timeMax、いずれもISO文字列）の予定を取得する共通処理。
+ * onlyAppEvents=true の場合、privateExtendedProperty での絞り込みにより
+ * このアプリが分類済みの予定だけを取得する。
  */
-function listCalendarEvents_(timeMinIso, timeMaxIso) {
+function listCalendarEventsInternal_(timeMinIso, timeMaxIso, onlyAppEvents) {
   var calendarId = getTargetCalendarId_();
   var events = [];
   var pageToken;
   do {
     var response = callWithRetry_(function () {
-      return Calendar.Events.list(calendarId, {
+      var params = {
         timeMin: timeMinIso,
         timeMax: timeMaxIso,
         singleEvents: true,
         orderBy: 'startTime',
         maxResults: 250,
-        pageToken: pageToken,
-        privateExtendedProperty: Config.APP_SOURCE_KEY + '=' + Config.APP_SOURCE_VALUE
-      });
+        pageToken: pageToken
+      };
+      if (onlyAppEvents) {
+        params.privateExtendedProperty = Config.APP_SOURCE_KEY + '=' + Config.APP_SOURCE_VALUE;
+      }
+      return Calendar.Events.list(calendarId, params);
     });
     events = events.concat(response.items || []);
     pageToken = response.nextPageToken;
   } while (pageToken);
   return events;
+}
+
+/**
+ * 指定期間の、このアプリが分類済みの予定だけを取得する。
+ */
+function listCalendarEvents_(timeMinIso, timeMaxIso) {
+  return listCalendarEventsInternal_(timeMinIso, timeMaxIso, true);
+}
+
+/**
+ * 指定期間の全予定を取得する（Googleカレンダーに元々あった、
+ * このアプリ未分類の予定も含む）。カレンダー画面での「既存予定の取り込み」に使う。
+ */
+function listAllCalendarEvents_(timeMinIso, timeMaxIso) {
+  return listCalendarEventsInternal_(timeMinIso, timeMaxIso, false);
 }
 
 function getCalendarEvent_(eventId) {

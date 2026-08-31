@@ -164,6 +164,46 @@ function isValidEventId_(value) {
 }
 
 /**
+ * 既存カレンダー予定を「Liella!関連予定として分類」する際の入力を検証する。
+ * タイトル・日付・時刻は変更しないため、それらの検証は行わない。
+ */
+function validateClassificationData(metadata) {
+  var errors = {};
+  metadata = metadata || {};
+
+  if (!Array.isArray(metadata.casts) || metadata.casts.length === 0) {
+    errors.casts = '出演者を1人以上選択してください';
+  } else {
+    var invalidCast = metadata.casts.some(function (cast) {
+      return Config.CAST_LIST.indexOf(cast) === -1;
+    });
+    if (invalidCast) {
+      errors.casts = '出演者の指定が不正です';
+    }
+  }
+
+  var categoryValues = Config.CATEGORY_LIST.map(function (c) { return c.value; });
+  if (categoryValues.indexOf(metadata.category) === -1) {
+    errors.category = 'カテゴリを選択してください';
+  }
+
+  var groupValues = Config.GROUP_LIST.map(function (g) { return g.value; });
+  if (metadata.group && groupValues.indexOf(metadata.group) === -1) {
+    errors.group = 'グループの指定が不正です';
+  }
+
+  if (!isValidUrl_(metadata.url)) {
+    errors.url = 'URLはhttp(s)://で始まる' + Config.MAX_URL_LENGTH + '文字以内の値を入力してください';
+  }
+
+  if (metadata.memo && !isWithinLength_(metadata.memo, Config.MAX_MEMO_LENGTH)) {
+    errors.memo = '備考は' + Config.MAX_MEMO_LENGTH + '文字以内で入力してください';
+  }
+
+  return { valid: Object.keys(errors).length === 0, errors: errors };
+}
+
+/**
  * ユーザー設定（推しキャスト等）の検証。
  * クライアントからの直接呼び出しでも、Config.CAST_LIST に存在しない
  * 値が保存されないようにする。

@@ -138,6 +138,23 @@ function buildEventResource(formData) {
   return resource;
 }
 
+/**
+ * Googleカレンダーに元々あった予定（このアプリ未分類）に、
+ * Liella!専用メタデータだけを追記するためのリソースを組み立てる。
+ * buildEventResource() と異なり summary/location/start/end/description は
+ * 一切変更しない（ユーザーが既存カレンダーに登録していた予定の見た目を壊さないため）。
+ */
+function buildClassificationResource(metadata) {
+  var resource = { extendedProperties: { private: {} } };
+  resource.extendedProperties.private[Config.APP_SOURCE_KEY] = Config.APP_SOURCE_VALUE;
+  resource.extendedProperties.private.category = metadata.category;
+  resource.extendedProperties.private.group = metadata.group;
+  resource.extendedProperties.private.casts = JSON.stringify(metadata.casts);
+  resource.extendedProperties.private.url = metadata.url || '';
+  resource.extendedProperties.private.memo = metadata.memo || '';
+  return resource;
+}
+
 function buildRecurrenceRule_(formData) {
   var value = formData.recurrence || 'none';
   if (value === 'none') {
@@ -170,6 +187,7 @@ function toAppEvent(event) {
   }
 
   var isAllDay = !!(event.start && event.start.date);
+  var isClassified = props[Config.APP_SOURCE_KEY] === Config.APP_SOURCE_VALUE;
 
   return {
     id: event.id,
@@ -183,6 +201,7 @@ function toAppEvent(event) {
     group: props.group || 'other',
     casts: casts,
     isAllDay: isAllDay,
+    isClassified: isClassified,
     start: isAllDay ? event.start.date : event.start.dateTime,
     end: isAllDay ? event.end.date : event.end.dateTime,
     htmlLink: event.htmlLink || ''
