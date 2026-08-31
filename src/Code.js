@@ -7,7 +7,15 @@
  * 認証・トークン管理を行い、このスクリプトはトークンそのものを一切扱わない）。
  */
 
-function doGet() {
+function doGet(e) {
+  var page = e && e.parameter && e.parameter.page;
+  if (page === 'privacy') {
+    return HtmlService.createHtmlOutputFromFile('privacy').setTitle('プライバシーポリシー');
+  }
+  if (page === 'terms') {
+    return HtmlService.createHtmlOutputFromFile('terms').setTitle('利用規約');
+  }
+
   var template = HtmlService.createTemplateFromFile('index');
   template.castList = Config.CAST_LIST;
   template.categoryList = Config.CATEGORY_LIST;
