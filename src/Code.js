@@ -8,12 +8,22 @@
  */
 
 function doGet(e) {
+  // GASのHtmlServiceはコンテンツをサンドボックス用iframe内に描画するため、
+  // ページ間リンクは相対URL（現在表示中のiframeの場所を基準に解決される）では
+  // 意図した遷移先にならない。ScriptApp.getService().getUrl() で取得できる
+  // Webアプリ自身の絶対URLをテンプレートへ渡し、リンクは常に絶対URLで組み立てる。
+  var appUrl = ScriptApp.getService().getUrl();
   var page = e && e.parameter && e.parameter.page;
+
   if (page === 'privacy') {
-    return HtmlService.createHtmlOutputFromFile('privacy').setTitle('プライバシーポリシー');
+    var privacyTemplate = HtmlService.createTemplateFromFile('privacy');
+    privacyTemplate.appUrl = appUrl;
+    return privacyTemplate.evaluate().setTitle('プライバシーポリシー');
   }
   if (page === 'terms') {
-    return HtmlService.createHtmlOutputFromFile('terms').setTitle('利用規約');
+    var termsTemplate = HtmlService.createTemplateFromFile('terms');
+    termsTemplate.appUrl = appUrl;
+    return termsTemplate.evaluate().setTitle('利用規約');
   }
 
   var template = HtmlService.createTemplateFromFile('index');
@@ -21,6 +31,7 @@ function doGet(e) {
   template.categoryList = Config.CATEGORY_LIST;
   template.groupList = Config.GROUP_LIST;
   template.recurrenceOptions = Config.RECURRENCE_OPTIONS;
+  template.appUrl = appUrl;
   return template
     .evaluate()
     .setTitle('Liella! キャスト出演予定管理')
